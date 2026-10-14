@@ -1,0 +1,44 @@
+
+---
+- name: Task 7 - Deploy SonarQube using Docker
+  hosts: webservers
+  become: true
+
+  tasks:
+    - name: Ensure Docker is running
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create SonarQube data directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "1000"
+        group: "1000"
+        mode: "0755"
+      loop:
+        - /opt/sonarqube/data
+        - /opt/sonarqube/extensions
+        - /opt/sonarqube/logs
+
+    - name: Set Linux kernel parameter required by Elasticsearch
+      ansible.posix.sysctl:
+        name: vm.max_map_count
+        value: "524288"
+        state: present
+        reload: true
+
+    - name: Start SonarQube container
+      community.docker.docker_container:
+        name: sonarqube
+        image: sonarqube:lts-community
+        state: started
+        restart_policy: unless-stopped
+        published_ports:
+          - "9000:9000"
+        volumes:
+          - /opt/sonarqube/data:/opt/sonarqube/data
+          - /opt/sonarqube/extensions:/opt/sonarqube/extensions
+          - /opt/sonarqube/logs:/opt/sonarqube/logs

@@ -1,0 +1,46 @@
+---
+- name: Install and configure Jenkins
+  hosts: webservers
+  become: true
+
+  tasks:
+    - name: Install Java and prerequisites
+      ansible.builtin.apt:
+        name:
+          - fontconfig
+          - openjdk-21-jre
+        state: present
+        update_cache: true
+
+    - name: Download Jenkins signing key
+      ansible.builtin.get_url:
+        url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+        dest: /usr/share/keyrings/jenkins-keyring.asc
+        mode: "0644"
+
+    - name: Add Jenkins repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/"
+        filename: jenkins
+        state: present
+
+    - name: Install Jenkins
+      ansible.builtin.apt:
+        name: jenkins
+        state: present
+        update_cache: true
+
+    - name: Start and enable Jenkins
+      ansible.builtin.service:
+        name: jenkins
+        state: started
+        enabled: true
+
+    - name: Check Jenkins service
+      ansible.builtin.command: systemctl is-active jenkins
+      register: jenkins_status
+      changed_when: false
+
+    - name: Display Jenkins status
+      ansible.builtin.debug:
+        var: jenkins_status.stdout

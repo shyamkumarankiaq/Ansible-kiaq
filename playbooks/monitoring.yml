@@ -1,0 +1,41 @@
+---
+- name: Install Prometheus and Grafana
+  hosts: webservers
+  become: yes
+
+  tasks:
+    - name: Create monitoring directory
+      file:
+        path: /opt/monitoring
+        state: directory
+
+    - name: Copy Prometheus configuration
+      copy:
+        dest: /opt/monitoring/prometheus.yml
+        content: |
+          global:
+            scrape_interval: 15s
+          scrape_configs:
+            - job_name: prometheus
+              static_configs:
+                - targets: ['localhost:9090']
+
+    - name: Copy Docker Compose file
+      copy:
+        dest: /opt/monitoring/docker-compose.yml
+        content: |
+          services:
+            prometheus:
+              image: prom/prometheus
+              ports:
+                - "9090:9090"
+              volumes:
+                - /opt/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+
+            grafana:
+              image: grafana/grafana
+              ports:
+                - "3000:3000"
+
+    - name: Start monitoring tools
+      command: docker compose -f /opt/monitoring/docker-compose.yml up -d

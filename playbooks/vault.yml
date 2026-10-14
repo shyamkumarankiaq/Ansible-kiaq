@@ -1,0 +1,43 @@
+
+---
+- name: Task 6 - Install and configure HashiCorp Vault
+  hosts: webservers
+  become: true
+
+  tasks:
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - gpg
+          - ca-certificates
+        state: present
+        update_cache: true
+
+    - name: Add HashiCorp GPG key
+      ansible.builtin.shell: |
+        curl -fsSL https://apt.releases.hashicorp.com/gpg |
+        gpg --dearmor --yes -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+      args:
+        creates: /usr/share/keyrings/hashicorp-archive-keyring.gpg
+
+    - name: Add HashiCorp repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+        filename: hashicorp
+        state: present
+
+    - name: Install Vault
+      ansible.builtin.apt:
+        name: vault
+        state: present
+        update_cache: true
+
+    - name: Check Vault version
+      ansible.builtin.command: vault version
+      register: vault_version
+      changed_when: false
+
+    - name: Display installed Vault version
+      ansible.builtin.debug:
+        var: vault_version.stdout
