@@ -1,11 +1,14 @@
-
 ---
 - name: Task 5 - Harbor Registry
   hosts: webservers
   become: true
 
+  vars:
+    harbor_version: "2.13.2"
+    harbor_ip: "{{ ansible_host }}"
+
   tasks:
-    - name: Install Harbor prerequisites
+    - name: Install prerequisites
       ansible.builtin.apt:
         name:
           - docker.io
@@ -16,24 +19,71 @@
         state: present
         update_cache: true
 
-    - name: Ensure Docker service is running
+    - name: Start Docker
       ansible.builtin.service:
         name: docker
         state: started
         enabled: true
 
-    - name: Check available disk space
-      ansible.builtin.command: df -h /
-      register: disk_space
-      changed_when: false
+    - name: Create certificate directory
+      ansible.builtin.file:
+        path: /data/cert
+        state: directory
+        mode: "0755"
 
-    - name: Display available disk space
-      ansible.builtin.debug:
-        var: disk_space.stdout_lines
+    - name: Generate HTTPS certificate
+      ansible.builtin.command:
+        cmd: >-
+          openssl req -x509 -nodes -days 365
+          -newkey rsa:2048
+          -keyout /data/cert/harbor.key
+          -out /data/cert/harbor.crt
+          -subj /CN={{ harbor_ip }}
+          -addext subjectAltName=IP:{{ harbor_ip }}
+      args:
+        creates: /data/cert/harbor.crt
 
-    - name: Display Harbor deployment information
-      ansible.builtin.debug:
-        msg: >-
-          Harbor prerequisites are installed.
-          Check that the server has sufficient RAM and disk space
-          before deploying Harbor.
+    - name: Download Harbor installer
+      ansible.builtin.get_url:
+        url: "https://github.com/goharbor/harbor/releases/download/v{{ harbor_version }}/harbor-online-installer-v{{ harbor_version }}.tgz"
+        dest: /tmp/harbor.tgz
+        mode: "0644"
+
+    - name: Extract Harbor installer
+      ansible.builtin.unarchive:
+        src: /tmp/harbor.tgz
+        dest: /opt
+        remote_src: true
+        creates: /opt/harbor/install.sh
+
+    - name: Restore Harbor configuration template
+      ansible.builtin.copy:
+        src: /opt/harbor/harbor.yml.tmpl
+        dest: /opt/harbor/harbor.yml
+        remote_src: true
+        force: false
+        mode: "0600"
+
+    - name: Configure Harbor hostname
+      ansible.builtin.lineinfile:
+        path: /opt/harbor/harbor.yml
+        regexp: '^hostname:'
+        line: "hostname: {{ harbor_ip }}"
+
+    - name: Configure Harbor certificate
+      ansible.builtin.lineinfile:
+        path: /opt/harbor/harbor.yml
+        regexp: '^  certificate:'
+        line: "  certificate: /data/cert/harbor.crt"
+
+    - name: Configure Harbor private key
+      ansible.builtin.lineinfile:
+        path: /opt/harbor/harbor.yml
+        regexp: '^  private_key:'
+        line: "  private_key: /data/cert/harbor.key"
+
+    - name: Install Harbor
+      ansible.builtin.command: ./install.sh
+      args:
+        chdir: /opt/harbor
+        creates: /opt/harbor/docker-compose.yml
